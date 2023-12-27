@@ -1,0 +1,203 @@
+import tkinter as tk
+from tkinter import messagebox, Scrollbar, HORIZONTAL
+import pickle
+from datetime import datetime, timedelta
+
+
+class Task:
+    """Класс, представляющий задачу в списке дел."""
+
+    def __init__(self, title, description, due_date=None):
+        """Инициализирует задачу с заданными атрибутами."""
+        self.title = title
+        self.description = description
+        self._is_completed = False
+        self._creation_date = datetime.now()
+        self.due_date = due_date
+
+    def complete(self):
+        """Отмечает задачу как завершенную."""
+        self._is_completed = True
+
+    def __str__(self):
+        """Возвращает строковое представление задачи."""
+        status = "Завершено" if self._is_completed else "Не завершено"
+        due_date_str = f" до {self.due_date}" if self.due_date else ""
+        return f"{self.title}: {self.description} ({status}, создано: {self._creation_date}{due_date_str})"
+
+
+class ToDoApp:
+    """Класс, представляющий приложение для управления списком дел."""
+
+    def __init__(self, root):
+        """Инициализирует приложение с заданным корневым окном."""
+        self.root = root
+        self.root.title("To-Do List")
+
+        self._todo_list = []
+        self._load_tasks()
+
+        self._create_widgets()
+
+    def _load_tasks(self):
+        """Загружает задачи из файла tasks.pkl, если он существует."""
+        try:
+            with open("tasks.pkl", "rb") as file:
+                self._todo_list = pickle.load(file)
+        except (FileNotFoundError, EOFError):
+            self._todo_list = []
+
+    def _save_tasks(self):
+        """Сохраняет задачи в файл tasks.pkl."""
+        with open("tasks.pkl", "wb") as file:
+            pickle.dump(self._todo_list, file)
+
+    def _create_widgets(self):
+        """Создает виджеты для отображения и управления задачами."""
+        self.task_listbox = tk.Listbox(self.root, selectmode=tk.SINGLE, width=50, height=15)
+        self.task_listbox.pack(side=tk.LEFT, padx=10, pady=10)
+
+        scrollbar = Scrollbar(self.root, orient=tk.VERTICAL)
+        scrollbar.config(command=self.task_listbox.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.task_listbox.config(yscrollcommand=scrollbar.set)
+
+        # Добавляем горизонтальную полосу прокрутки
+        horizontal_scrollbar = Scrollbar(self.root, orient=HORIZONTAL)
+        horizontal_scrollbar.config(command=self.task_listbox.xview)
+        horizontal_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+
+        self.task_listbox.config(xscrollcommand=horizontal_scrollbar.set)
+
+        self._refresh_listbox()
+
+        self.add_button = tk.Button(self.root, text="Добавить задачу", command=self._show_add_task_window)
+        self.add_button.pack()
+
+        self.remove_button = tk.Button(self.root, text="Удалить задачу", command=self._remove_task)
+        self.remove_button.pack()
+
+        self.edit_button = tk.Button(self.root, text="Изменить задачу", command=self._show_edit_task_window)
+        self.edit_button.pack()
+
+        self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
+
+    def _show_add_task_window(self):
+        """Показывает окно для добавления новой задачи."""
+        add_task_window = tk.Toplevel(self.root)
+        add_task_window.title("Добавить задачу")
+
+        tk.Label(add_task_window, text="Название:").grid(row=0, column=0)
+        title_entry = tk.Entry(add_task_window)
+        title_entry.grid(row=0, column=1)
+
+        tk.Label(add_task_window, text="Описание:").grid(row=1, column=0)
+        description_entry = tk.Entry(add_task_window)
+        description_entry.grid(row=1, column=1)
+
+        tk.Label(add_task_window, text="Срок выполнения (ГГГГ-ММ-ДД):").grid(row=2, column=0)
+        due_date_entry = tk.Entry(add_task_window)
+        due_date_entry.grid(row=2, column=1)
+
+        add_button = tk.Button(add_task_window, text="Добавить", command=lambda: self._add_task(
+            title_entry.get(), description_entry.get(), due_date_entry.get(), add_task_window))
+        add_button.grid(row=3, columnspan=2)
+
+    def _show_edit_task_window(self):
+        """Показывает окно для изменения выбранной задачи."""
+        selection = self.task_listbox.curselection()
+        if selection:
+            index = selection[0]
+            task = self._todo_list[index]
+
+            edit_task_window = tk.Toplevel(self.root)
+            edit_task_window.title("Изменить задачу")
+
+            tk.Label(edit_task_window, text="Новое название:").grid(row=0, column=0)
+            title_entry = tk.Entry(edit_task_window)
+            title_entry.grid(row=0, column=1)
+            title_entry.insert(0, task.title)
+
+            tk.Label(edit_task_window, text="Новое описание:").grid(row=1, column=0)
+            description_entry = tk.Entry(edit_task_window)
+            description_entry.grid(row=1, column=1)
+            description_entry.insert(0, task.description)
+
+            tk.Label(edit_task_window, text="Новый срок выполнения (ГГГГ-ММ-ДД):").grid(row=2, column=0)
+            due_date_entry = tk.Entry(edit_task_window)
+            due_date_entry.grid(row=2, column=1)
+            due_date_entry.insert(0, "" if not task.due_date else task.due_date.strftime("%Y-%m-%d"))
+
+            save_button = tk.Button(edit_task_window, text="Сохранить изменения",
+                                    command=lambda: self._edit_task(index, title_entry.get(), description_entry.get(),
+                                                                      due_date_entry.get(), edit_task_window))
+            save_button.grid(row=3, columnspan=2)
+
+    def _add_task(self, title, description, due_date, window):
+        """Добавляет новую задачу в список дел с заданными атрибутами."""
+        if not title:
+            messagebox.showerror("Ошибка", "Название задачи не может быть пустым.", parent=window)
+            return
+        try:
+            due_date = datetime.strptime(due_date, "%Y-%m-%d") if due_date else None
+        except ValueError:
+            messagebox.showerror("Ошибка", "Неверный формат даты. Используйте ГГГГ-ММ-ДД.", parent=window)
+            return
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Ошибка при обработке даты: {e}", parent=window)
+            return
+
+        task = Task(title, description, due_date)
+        self._todo_list.append(task)
+        self._refresh_listbox()
+        window.destroy()
+
+    def _remove_task(self):
+        """Удаляет выбранную задачу из списка дел."""
+        selection = self.task_listbox.curselection()
+        if selection:
+            index = selection[0]
+            task = self._todo_list.pop(index)
+            self._refresh_listbox()
+            messagebox.showinfo("Удалено", f"Задача {task.title} удалена.")
+
+    def _edit_task(self, index, new_title, new_description, new_due_date, window):
+        """Изменяет выбранную задачу с новыми атрибутами."""
+        if not new_title:
+            messagebox.showerror("Ошибка", "Название задачи не может быть пустым.", parent=window)
+            return
+        try:
+            new_due_date = datetime.strptime(new_due_date, "%Y-%m-%d") if new_due_date else None
+        except ValueError:
+            messagebox.showerror("Ошибка", "Неверный формат даты. Используйте ГГГГ-ММ-ДД.", parent=window)
+            return
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Ошибка при обработке даты: {e}", parent=window)
+            return
+
+        task = self._todo_list[index]
+        task.title = new_title
+        task.description = new_description
+        task.due_date = new_due_date
+
+        self._refresh_listbox()
+        window.destroy()
+
+    def _refresh_listbox(self):
+        """Обновляет содержимое виджета Listbox согласно списку дел."""
+        self.task_listbox.delete(0, tk.END)
+        for task in self._todo_list:
+            self.task_listbox.insert(tk.END, str(task))
+
+    def _on_closing(self):
+        """Вызывается при закрытии корневого окна. Спрашивает пользователя, хочет ли он сохранить задачи."""
+        if messagebox.askyesno("Выход", "Хотите ли вы сохранить задачи перед выходом?"):
+            self._save_tasks()
+        self.root.destroy()
+
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = ToDoApp(root)
+    root.mainloop()
